@@ -18,7 +18,7 @@
 .sien-key-row{display:grid;grid-template-columns:minmax(100px,1fr) auto auto;gap:10px;align-items:center;padding:13px 0;border-bottom:1px solid var(--line)}
 .sien-key-row kbd{font-size:13px}.sien-key-row button{min-height:36px;padding:5px 12px}.sien-key-row small{display:block;font-size:12px;color:var(--ink2)}
 #sienKeyStatus{min-height:26px;color:var(--ink2);line-height:1.6;font-size:13px}
-[hidden]{display:none!important}
+
 #sienPokeNotice{position:fixed;top:calc(env(safe-area-inset-top) + 14px);right:16px;width:min(340px,calc(100vw - 32px));padding:14px 18px;border:1px solid var(--line);border-radius:16px;background:var(--c-card,#fffaf4);color:var(--ink);box-shadow:0 6px 24px #0002;z-index:11000;font-size:14px}
 .sien-poke-head{display:flex;align-items:center;justify-content:space-between;gap:16px}.sien-poke-head button{min-height:32px;padding:4px 10px}#sienPokeNotice p{margin:10px 0 0;line-height:1.55}
 /* A scheduled learning card cannot be revealed or graded while waiting. */
@@ -107,3 +107,4 @@ body:has(#scrSolve.on){--insp-w:340px}
 
 /* Japanese phrases may wrap between characters; keep explicit source newlines. */
 #cFront.sien-text[lang=ja],#csSheet .cs-front.sien-text[lang=ja]{word-break:normal;line-break:strict}
+[hidden]{display:none!important}

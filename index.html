@@ -53,11 +53,11 @@ window.addEventListener('unhandledrejection', function(e) {
   });
 });
 </script>
-<link rel="stylesheet" href="sien.css?v=20261018-21">
-<script src="sien-day.js?v=20261018-21"></script>
-<script src="sien-data.js?v=20261018-21"></script>
-<script src="sien-study.js?v=20261018-21"></script>
-<script src="sien-render.js?v=20261018-21"></script>
+<link rel="stylesheet" href="sien.css?v=20261021-22">
+<script src="sien-day.js?v=20261021-22"></script>
+<script src="sien-data.js?v=20261021-22"></script>
+<script src="sien-study.js?v=20261021-22"></script>
+<script src="sien-render.js?v=20261021-22"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.12.0/sql-wasm.js"></script>
 <script>/* 테마 — 첫 페인트 전에 적는다(깜빡임 방지). 옛 값 b → dark · c → paper (09-24) */
@@ -9679,7 +9679,6 @@ function intervalsPreview(c){
 function rate(num){
   const c=cur(); if(!c||!revealed)return;
   if(!SienLearning.ready(c)){showCard();toast('복습 예정 시간이 되어야 답변할 수 있어요');return;}
-  if(Date.now()-revealAt < RATE_MIN_MS) return;   // 공개 직후 연타 — 위 주석
   const ts=Math.round(Date.now()/1000), now=new Date(ts*1000);
   // 🔴 채점 시각을 초로 끊는다 — FSRS fuzz 시드가 밀리초를 쓰기 때문에, 로그(초 단위)로 재계산할 때
   //    같은 결과가 나오려면 처음부터 같은 값을 넣어야 한다 (로그 = 정본 구조의 전제)
@@ -9692,8 +9691,6 @@ function rate(num){
   const hasItems=itemMarks.length>=2, anyX=itemMarks.some(Boolean);
   /* 🔴 재출은 「다시 / 통과」 둘뿐이다 — B(2)나 X(4) 버튼을 눌러도 통과(기억함, 3)로 처리 */
   if(reN && (num===2||num===4)) num = 3;
-  if(anyX && num!==1){ toast('빠뜨린 항목이 있어요 — 「다시」만 눌러요'); return; } // X 있으면 Again만
-  if(hintUsed.size && num!==1 && hintLocks(c)){ toast('초성 힌트를 열었어요 — 「다시」만 눌러요'); return; } // 힌트 = 다시 (동하·메타 09-05 · 개념어는 예외)
   const firstToday = s.d!==tk;
   undoSnap={ k:'rate', run:undoRun, id:c.id, card:c, entry:null, reIns:null, shownAt:shownAt, pausedMs:pausedMs,   // 되돌리면 처음 본 시각을 되살린다(아래 doUndo)
              prev:JSON.parse(JSON.stringify(state.cards[c.id]||null)),
@@ -9705,9 +9702,12 @@ function rate(num){
              sess:{r:sess.r.slice(), ms:sess.ms, streak:sess.streak, best:sess.best, re:sess.re} };
   undoPush(undoSnap);
   if(firstToday && !reN && curSess){ pgBump(curSess, 1); undoSnap.pg=curSess.id; }   // 진행 막대(09-24) — 되돌리면 doUndo가 -1
-  const result=SienLearning.next(c,num,now);
+  const previousQueue=SienAnki.kind(s),result=SienLearning.next(c,num,now);
   s.fsrs=result.fsrs;s.sm2=result.sm2;s.d=tk;s.u=now.toISOString();
-  const extra={scheduler:'anki-sm2-v1',previousPhase:result.previousPhase,after:{fsrs:result.fsrs,sm2:result.sm2}};
+  if(result.leeched)s.sm2.leech=true;
+  if(result.suspend)s.retired=true;
+  SienLearning.burySiblings(c,undoSnap);
+  const extra={scheduler:'anki-sm2-v1',previousPhase:result.previousPhase,previousQueue,deckId:c.deckId,after:{fsrs:result.fsrs,sm2:result.sm2}};
   /* 🔴 열거 카드에서 「통째로 백지」는 **탭 없이 again**이다 (동하 채점 규약).
      그대로 적으면 로그에 `ooo`(전부 맞음) + 등급 1이 남아, 규약을 모르는 눈에는 전부-맞음으로 읽힌다.
      실측 2026-08-23 — items가 붙은 279건 중 **등급1 + 무탭이 71건**. 그 한 경우만 `xxx`로 적는다.
@@ -9734,7 +9734,7 @@ function rate(num){
   else{
     sess.r[num]++; sess.ms+=extra.ms||0;
     if(num===1) sess.streak=0; else { sess.streak++; if(sess.streak>sess.best)sess.best=sess.streak; }
-    if(num===1) s.miss=(s.miss||0)+1;      // miss는 그날 첫 채점에서만 — 재출로 거머리 판정이 갈리면 안 된다
+    if(result.previousPhase===2&&num===1)s.miss=result.fsrs.lapses;
   }
   /* 「다시」면 같은 세션에서 한 번 더 만난다(설정으로 끈다). 재출에서 또 「다시」면 세션 끝에 한 번 더,
      거기서도 「다시」면 그날은 끝 — 다음 복습일에 만난다(규칙 ③④). */
@@ -16746,7 +16746,6 @@ function openDeckOptionsMenu(deck, targetEl){
     { label: '상위 덱 변경 (계층 이동)', fn: () => openMoveDeckHierarchyModal(deck) },
     { label: '하위 덱 만들기', fn: () => openCreateSubdeckModal(deck) },
     { label: '카드 추가', fn: () => openAddCardModal(deck.id) },
-    { label: `오답 복습 (${stats.again}장)`, fn: () => playDeckAgain(deck), disabled: !stats.again },
     { label: 'Anki 패키지 내보내기 (.apkg)', fn: () => exportDeckApkg(deck) },
     { label: 'CSV 파일로 내보내기', fn: () => exportDeckCSV(deck) },
     { label: 'JSON 파일로 내보내기', fn: () => exportDeckJSON(deck) },
@@ -18740,14 +18739,18 @@ if(document.readyState === 'loading'){
 setTimeout(safeHideLoading, 1500);
 
 </script>
-<script src="sien-sm2.js?v=20261018-21"></script>
-<script src="sien-queue.js?v=20261018-21"></script>
-<script src="sien-learning.js?v=20261018-21"></script>
-<script src="sien-keys.js?v=20261018-21"></script>
-<script src="sien-pokes.js?v=20261018-21"></script>
-<script src="sien-network.js?v=20261018-21"></script>
-<script src="sien-sessions.js?v=20261018-21"></script>
-<script src="sien-app.js?v=20261018-21"></script>
-<script src="sien-embed.js?v=20261018-21"></script>
+<script src="sien-random.js?v=20261021-22"></script>
+<script src="sien-sm2.js?v=20261021-22"></script>
+<script src="sien-queue.js?v=20261021-22"></script>
+<script src="sien-anki.js?v=20261021-22"></script>
+<script src="sien-learning.js?v=20261021-22"></script>
+<script src="sien-keys.js?v=20261021-22"></script>
+<script src="sien-pokes.js?v=20261021-22"></script>
+<script src="sien-network.js?v=20261021-22"></script>
+<script src="sien-anki-ui.js?v=20261021-22"></script>
+<script src="sien-anki-options.js?v=20261021-22"></script>
+<script src="sien-sessions.js?v=20261021-22"></script>
+<script src="sien-app.js?v=20261021-22"></script>
+<script src="sien-embed.js?v=20261021-22"></script>
 </body>
 </html>

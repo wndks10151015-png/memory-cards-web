@@ -10,7 +10,7 @@
       }
     }return {...seeds.get(id),grades:grades.get(id)};
   }
-  function next(c,num,now){return M.next(st(c.id),num,now,c.id,imported(c.id));}
+  function next(c,num,now){return M.next(st(c.id),num,now,c.id,imported(c.id),true,getDeckOptions(DECKS.find(d=>d.id===c.deckId)));}
   function alive(c){return !!c&&!!BYID[c.id]&&!retired(c)&&!buried(c)&&!offed(c);}
   const LEARN_AHEAD_MS=20*60*1000;
   function dueTime(c){return Math.max(c._sienQueueDue||0,Date.parse(state.cards[c.id]?.fsrs?.due));}
@@ -21,9 +21,9 @@
     return alive(c)&&kind(c)==='learning'&&dueTime(c)<=Date.now()+LEARN_AHEAD_MS&&
       queue.slice(qPos).some(x=>x.id===c.id)&&!queue.slice(qPos).some(mainReady);
   }
-  function queued(c){return alive(c)&&(dueNow(c)||(kind(c)==='learning'&&Number.isFinite(dueTime(c))));}
+  function queued(c){return alive(c)&&(dueNow(c)||(kind(c)==='learning'&&dueTime(c)<Date.parse(SienDay.due(Date.now(),1))));}
   function insert(c){
-    if(!M.learning(state.cards[c.id]))return null;
+    if(!M.learning(state.cards[c.id])||kind(c)!=='learning')return null;
     for(let i=queue.length-1;i>qPos;i--)if(queue[i].id===c.id)queue.splice(i,1);
     const item={...c};delete item._re;delete item._day;delete item._sienQueueDue;
     // Anki avoids immediate repeated presentation when another learn-ahead card can go first.
@@ -35,9 +35,7 @@
     queue.push(item);return item;
   }
   function kind(c){
-    const f=state.cards[c.id]?.fsrs;
-    if(M.learning(state.cards[c.id]))return f.last_review&&M.dayNumber(f.due)>M.dayNumber(f.last_review)?'interday':'learning';
-    return isNew(c)?'new':'review';
+    return SienAnki.kind(state.cards[c.id]);
   }
   function start(sx){
     if(!sx||sx.how?.order==='doc')return;
@@ -60,12 +58,12 @@
     const size=queue.length;queue=[...before,...queue.slice(qPos).filter(c=>queued(c)&&!seen.has(c.id)&&seen.add(c.id))];
     if(queue.length!==size)syncSessQueue();
     // Due short steps take precedence over fresh cards; future steps wait while other cards continue.
-    const learningAt=cutoff=>{let at=-1,earliest=Infinity;for(let i=qPos;i<queue.length;i++){const c=queue[i];if(kind(c)==='learning'&&dueTime(c)<=cutoff&&dueTime(c)<earliest){earliest=dueTime(c);at=i;}}return at;};
+    const learningAt=cutoff=>{let at=-1;for(let i=qPos;i<queue.length;i++){const c=queue[i];if(kind(c)!=='learning'||dueTime(c)>cutoff)continue;const old=queue[at];if(at<0||Number(!state.cards[c.id]?.fsrs?.reps)<Number(!state.cards[old.id]?.fsrs?.reps)||(!!state.cards[c.id]?.fsrs?.reps===!!state.cards[old.id]?.fsrs?.reps&&dueTime(c)<dueTime(old)))at=i;}return at;};
     let at=learningAt(Date.now());
     if(at<0)at=queue.findIndex((c,i)=>i>=qPos&&mainReady(c));
     if(at<0)at=learningAt(Date.now()+LEARN_AHEAD_MS);
     if(at>=0){if(at!==qPos)queue.splice(qPos,0,queue.splice(at,1)[0]);return true;}
-    const future=queue.slice(qPos).filter(c=>M.learning(state.cards[c.id])&&Number.isFinite(Date.parse(state.cards[c.id].fsrs.due)));
+    const future=queue.slice(qPos).filter(c=>kind(c)==='learning'&&Number.isFinite(Date.parse(state.cards[c.id].fsrs.due)));
     if(!future.length)return true;
     waiting=true;revealed=false;$('scrSolve').classList.add('sien-waiting');const el=panel();el.hidden=false;counts();
     $('summary').style.display='none';$('cardZone').style.display='none';$('gradeBar').classList.remove('on');
@@ -78,7 +76,16 @@
   // FSRS settings must not replay imported or newly answered SM-2 schedules.
   replayLog=function(){lastRevIdx=null;firstRevIdx=null;todayRateIdx=null;return 0;};
   retrievability=function(){return null;};
-  window.SienLearning={next,insert,start,prepare,ready,queued,ahead:c=>ready(c)&&!dueNow(c),get waiting(){return waiting;}};
+  function burySiblings(c,undo){
+    const note=SienAnki.metadata(c).noteId;if(note==null)return;
+    const cfg=getDeckOptions(DECKS.find(d=>d.id===c.deckId));
+    for(const other of DATA){if(other.id===c.id||SienAnki.metadata(other).noteId!==note)continue;
+      const k=kind(other);if(!(k==='new'?cfg.buryNew:k==='interday'?cfg.buryInterday:k==='review'?cfg.buryReview:false))continue;
+      (undo.also||=[]).push({id:other.id,prev:state.cards[other.id]?JSON.parse(JSON.stringify(state.cards[other.id])):null});
+      const s=st(other.id);s.by=todayKey();s.mu=s.u=new Date().toISOString();
+    }
+  }
+  window.SienLearning={next,insert,start,prepare,ready,queued,burySiblings,ahead:c=>ready(c)&&!dueNow(c),get waiting(){return waiting;}};
   for(const id of ['tglReshow','deckOptRetentionRange','retRange','cretRange','xretRange','fwBox','restDow','restDate'])$(id)?.closest('.tgl-row,.field')?.setAttribute('hidden','');
   const note=document.createElement('div');note.className='field';note.innerHTML='<label>복습 방식 · Anki SM-2</label><p class="desc">학습 1분 → 10분 · 재학습 10분<br>졸업 1일 · 쉬움 4일<br>신규·복습은 Anki 방식으로 섞기<br>복습·신규가 끝나면 20분 이내 학습 미리 보기<br>기존 일정과 기록은 보존하며 다음 답변부터 적용합니다.</p>';
   $('retRange')?.closest('.field')?.before(note);

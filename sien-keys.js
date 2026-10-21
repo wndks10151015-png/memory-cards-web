@@ -4,7 +4,7 @@
   const KEY='sien-keyboard-v1';
   const actions=[
     ['reveal','정답 보기 / 알맞음',['Space','Enter']],['again','다시',['Digit1','KeyZ']],['hard','어려움',['Digit2','KeyX']],['good','알맞음',['Digit3','KeyC']],['easy','쉬움',['Digit4','KeyV']],
-    ['undo','답변 되돌리기',['KeyR']],['bury','내일로 미루기',['Shift+KeyB']],['off','카드 끄기',['KeyQ']],['flag','플래그',['KeyF']],['pause','일시정지 / 재개',['KeyS']],['hint','초성 힌트',['KeyT']],
+    ['undo','답변 되돌리기',['KeyR']],['bury','내일로 미루기',['Shift+KeyB']],['off','카드 끄기',['KeyQ']],['flag','플래그',['KeyF']],['pause','일시정지 / 재개',['KeyS']],
     ['up','위로 스크롤',['ArrowUp']],['down','아래로 스크롤',['ArrowDown']],['home','홈으로',['KeyH']],['search','카드 검색',['Slash']],['close','닫기 / 나가기',['Escape']],['poke','스터디 알림',['KeyJ']],
     ['flag1','중요 표시',['Ctrl+Digit1']],['flag2','핵심 표시',['Ctrl+Digit2']],['flag3','재확인 표시',['Ctrl+Digit3']],['flag4','보충 표시',['Ctrl+Digit4']]
   ];
@@ -48,8 +48,8 @@
     if(!$('scrSolve').classList.contains('on')||SienLearning.waiting)return;
     e.preventDefault();
     if($('summary').style.display!=='none'){if(action==='reveal')$('smNew')?.click();return;}
-    if(action==='reveal'){if(!revealed)reveal();else if(!itemMarks.some(Boolean))rate(3);return;}
-    const grade={again:1,hard:2,good:3,easy:4}[action];if(grade){if(!revealed)reveal();else rate(grade);return;}
+    if(action==='reveal'){if(!revealed)reveal();else rate(3);return;}
+    const grade={again:1,hard:2,good:3,easy:4}[action];if(grade){if(revealed)rate(grade);return;}
     if(action==='undo'){if(!tooSoon())doUndo();return;}
     if(action==='bury'){if(!tooSoon())$('rBury').click();return;}
     if(action==='off'){if(!tooSoon())$('rOff').click();return;}

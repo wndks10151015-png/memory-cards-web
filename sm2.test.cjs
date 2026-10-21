@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),M=require('./sien-sm2');
 const now=new Date('2026-10-16T12:00:00Z'),later=s=>new Date(+now+s*1000),state=r=>({fsrs:r.fsrs,sm2:r.sm2});
 test('new card: Again 1m, Hard 5m30s, Good 10m, Easy 4d',()=>{
- const r=[1,2,3,4].map(g=>M.next({},g,now));assert.deepEqual(r.map(x=>x.seconds),[60,330,600,0]);assert.equal(r[3].days,4);assert.equal(r[2].sm2.step,1);
+ const r=[1,2,3,4].map(g=>M.next({},g,now,'',{},false));assert.deepEqual(r.map(x=>x.seconds),[60,330,600,0]);assert.equal(r[3].days,4);assert.equal(r[2].sm2.step,1);
 });
 test('same-day steps progress, repeat, reset and graduate without losing reps',()=>{
  const first=state(M.next({},3,now));const good=M.next(first,3,later(600));assert.equal(good.days,1);assert.equal(good.fsrs.state,2);assert.equal(good.fsrs.reps,2);
@@ -11,11 +11,11 @@ const review={fsrs:{state:2,scheduled_days:10,reps:20,lapses:1,last_review:'2026
 test('SM-2 review intervals and ease use the original Anki defaults',()=>{
  const r=[1,2,3,4].map(g=>M.next(review,g,now,'test',{},false));assert.deepEqual(r.map(x=>x.days),[0,12,25,33]);assert.deepEqual(r.map(x=>x.sm2.ease),[2.3,2.35,2.5,2.65]);assert.equal(r[0].seconds,600);assert.equal(r[0].fsrs.lapses,2);
 });
-test('overdue and early reviews follow separate interval rules',()=>{
- const late={...review,fsrs:{...review.fsrs,last_review:'2026-10-02T12:00:00Z'}};
+test('overdue days come from the stored due date; normal queues never perform early review',()=>{
+ const late={...review,fsrs:{...review.fsrs,due:'2026-10-12T00:00:00Z'}};
  assert.deepEqual([2,3,4].map(g=>M.next(late,g,now,'',{},false).days),[12,30,46]);
- const early={...review,fsrs:{...review.fsrs,last_review:'2026-10-15T12:00:00Z'}};
- assert.deepEqual([2,3,4].map(g=>M.next(early,g,now,'',{},false).days),[6,10,12]);
+ const early={...review,fsrs:{...review.fsrs,due:'2026-10-25T00:00:00Z'}};
+ assert.deepEqual([2,3,4].map(g=>M.next(early,g,now,'',{},false).days),[12,25,33]);assert.equal(M.due(early,now),false);
 });
 test('relearning failure does not repeatedly reduce ease or count lapses',()=>{
  const r=state(M.next(review,1,now)),again=M.next(r,1,later(600));assert.equal(again.seconds,600);assert.equal(again.sm2.ease,2.3);assert.equal(again.fsrs.lapses,2);
@@ -46,7 +46,7 @@ test('early release ease is corrected from original base and grades without resc
  assert.equal(M.seed({...s,sm2:fixed},{grades:[{grade:1,phase:2}]}).ease,2.1);assert.equal(JSON.stringify(s),snapshot);
 });
 test('short-term due uses seconds, long-term due uses the 4am day boundary',()=>{
- const a=state(M.next({},1,now));assert.equal(M.due(a,later(59)),false);assert.equal(M.due(a,later(60)),true);
+ const result=M.next({},1,now),a=state(result);assert.equal(M.due(a,later(result.scheduledSeconds-1)),false);assert.equal(M.due(a,later(result.scheduledSeconds)),true);
  const d=state(M.next({},4,now));assert.equal(M.due(d,new Date(d.fsrs.due).getTime()-1),false);assert.equal(M.due(d,Date.parse(d.fsrs.due)),true);
  assert.equal(M.learning(a),true);assert.equal(M.learning(d),false);assert.equal(M.label(M.next({},2,now)),'5분 30초 후');
 });

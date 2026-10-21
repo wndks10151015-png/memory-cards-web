@@ -1,3 +1,5 @@
+/* Anki Intersperser port. Copyright Ankitects Pty Ltd and contributors.
+ * SPDX-License-Identifier: AGPL-3.0-or-later. See LICENSE-ANKI.txt. */
 (function(root,factory){if(typeof module==='object'&&module.exports)module.exports=factory();else root.SienQueue=factory();})(typeof globalThis==='object'?globalThis:this,function(){
   'use strict';
   // Anki v3 Intersperser behavior: (one length + 1) / (two length + 1),

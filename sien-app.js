@@ -1,7 +1,7 @@
 /* Personal Gist transport. Each browser owns its journal; no whole-collection PUT. */
 (function(){
   'use strict';
-  if(!window.SienSessions){const url=new URL(location.href);if(url.searchParams.get('v')!=='20261018-21'){url.searchParams.set('v','20261018-21');location.replace(url.href);}else showBanner('학습 화면을 다시 불러와 주세요. 미전송 기록은 이 기기에 보관되어 있습니다.',false);return;}
+  if(!window.SienSessions||!window.SienAnkiUI||!window.SienRandom){const url=new URL(location.href);if(url.searchParams.get('v')!=='20261021-22'){url.searchParams.set('v','20261021-22');location.replace(url.href);}else showBanner('학습 화면을 다시 불러와 주세요. 미전송 기록은 이 기기에 보관되어 있습니다.',false);return;}
   const S=SienStudy,WEB='anki_fsrs_sync_data.json',PENDING='sien-pending-v1:',CACHE='sien-view-v1';
   let baseline=null,clock=0,applying=false,ready=false,chain=Promise.resolve(),timer=null;
   let sharedAppearance=S.appearance();
@@ -139,13 +139,14 @@
 
   async function read(g){
     if(!g.files?.[WEB])throw new Error('기존 카드 파일을 찾지 못했습니다.');
-    const names=Object.keys(g.files).filter(n=>n===WEB||n==='sien-obsidian-base-v2.json'||n.startsWith(S.PREFIX)||n.startsWith(S.BASE)||n.startsWith('sien-obsidian-lifecycle-'));
+    const names=Object.keys(g.files).filter(n=>n===WEB||n==='sien-anki-order-v1.json'||n==='sien-obsidian-base-v2.json'||n.startsWith(S.PREFIX)||n.startsWith(S.BASE)||n.startsWith('sien-obsidian-lifecycle-'));
     let cursor=0,failure;
     // Bound parallelism; await every started read before a retry can begin.
     await Promise.all(Array.from({length:Math.min(3,names.length)},async()=>{
       while(cursor<names.length&&!failure){const name=names[cursor++];try{await readFile(g.files[name],name);}catch(e){failure||=e;}}
     }));
     if(failure)throw failure;
+    if(g.files['sien-anki-order-v1.json']){SienAnki.setImport(await readFile(g.files['sien-anki-order-v1.json'],'sien-anki-order-v1.json'));SienAnkiUI.invalidate();}
     const p=S.validPayload(await readFile(g.files[WEB],WEB)),docs=[],blocked=[];let vaultId='';
     for(const [name,f]of Object.entries(g.files)){
       if(name.startsWith(S.PREFIX)||name.startsWith(S.BASE))docs.push(S.validateDoc(await readFile(f,name)));
@@ -253,6 +254,7 @@
     try{
       buildEngine();
       const cached=await idbGet(CACHE)||empty();
+      const config=getGistConfig();if(config?.gistId&&config.username){await loadFiles(config);const savedOrder=fileCache.get('sien-anki-order-v1.json');if(savedOrder)SienAnki.setImport(savedOrder.value);}
       // Import a browser's pre-journal sessions once, at the oldest logical time.
       // Per-field clocks let later shared edits/deletions win over this migration.
       if(!cached.learning){
